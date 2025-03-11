@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SC排行榜</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .player-form {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 5px;
+        }
+        .player-form input {
+            margin-right: 10px;
+            padding: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .delete-btn {
+            background-color: #ff4444;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .delete-btn:hover {
+            background-color: #cc0000;
+        }
+        .start-btn {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            color: black;
+        }
+        .start {
+            background-color: green;  /* 绿色表示开始 */
+            color: white;
+        }
+        .pause {
+            background-color: red;  /* 红色表示暂停 */
+            color: white;;
+        }
+        .new_sc{
+            background-color: #4CAF50;  /* 绿色表示开始 */
+        }
+        .rank_table{
+            max-height: calc(100vh - 300px);
+            overflow-y: auto;   /* 当表格内容超过最大高度时显示滚动条 */
+            border: 1px solid #ddd;  /* 给表格容器添加边框（可选） */
+            margin-bottom: 20px;  /* 给表格容器底部留一些空间（可选） */
+        }
+        .copy-btn{
+            cursor: pointer; /* 设置鼠标悬停时为手形指针 */
+            color: blue;
+            text-decoration: underline;
+            font-size: xx-small;
+
+        }
+    </style>
+</head>
+<body>
+    <h1>SC排行榜</h1>
+
+    <div class="player-form">
+        <button id="beginend" class="start-btn start" onclick="BeginEnd()">开始</button>
+        <button class = "start-btn" onclick="DelAll()">清空</button>
+    </div>
+    <div id = "table-container" class="rank_table">
+        <table id="rankingTable">
+            <thead>
+                <tr>
+                    <th>排名</th>
+                    <th>名字</th>
+                    <th>SC</th>
+                    <th>消息<a id="insert_count" style="font-size: xx-small;">(今日插队0)</a></th>
+                    <th>删除<a id="del_count" style="font-size: xx-small;">(0)</a></th>
+                </tr>
+            </thead>
+            <tbody id="rankingBody">
+            </tbody>
+        </table>
+
+    </div>
+
+    <script>
+        //定时器
+        let intervalId = null; 
+
+        // 排行榜数据存储
+        let players = [];
+
+        // 初始化渲染
+        renderRanking();
+
+        // 接口方法
+        const ranking = {
+            // 添加玩家
+            
+            add: (id, name, score, intro, is_new, is_render = true) => {
+                var idx =1;
+                var msgs = intro.map(item => {
+                    return `<a>${idx++}.${item}</a><a class="copy-btn" onclick="CopyMsg('${item}')">   search</a><br>`;
+                }).join('');
+
+                var newPlayer = {
+                    id: id,
+                    name,
+                    score: Number(score),
+                    intro: msgs,
+                    class:"",
+                };
+                if(is_new){
+                    newPlayer.class = "new_sc";
+                }
+                players.push(newPlayer);
+                is_render && renderRanking();
+            },
+
+            // 删除玩家
+            delete: (id) => {
+                players = players.filter(player => player.id !== id);
+                renderRanking();
+
+                fetch('/delete_rank', {
+                    method: 'POST',  // 请求方法
+                    headers: {
+                        'Content-Type': 'application/json'  // 设置请求头，告诉服务器这是 JSON 数据
+                    },
+                    body: JSON.stringify({id: id})  // 直接将 FormData 作为请求体
+                })
+                .then(response => response.json())
+                .then(data => {
+                    del_a = document.getElementById('del_count');
+                    del_a.textContent = "(" + data.del_count + ")";
+                })
+            },
+
+            // 更新玩家信息
+            update: (id, newData) => {
+                players = players.map(player => {
+                    if (player.id === id) {
+                        return { ...player, ...newData };
+                    }
+                    return player;
+                });
+                renderRanking();
+            },
+
+            // 获取所有玩家
+            getAll: () => [...players],
+        };
+
+
+        // 渲染排行榜
+        function renderRanking() {
+            const tbody = document.getElementById('rankingBody');
+            var idx = 1;
+            tbody.innerHTML = players
+                .map(player => `
+                    <tr class="${player.class}">
+                        <td>${idx++}</td>
+                        <td><a href="https://space.bilibili.com/${player.id}" target="_blank">${player.name}</a></td>
+                        <td>${player.score}</td>
+                        <td>${player.intro}</td>
+                        <td>
+                            <button class="delete-btn" onclick="ranking.delete(${player.id})">删除</button>
+                        </td>
+                    </tr>
+                `).join('');
+        }
+
+        // 添加玩家（界面调用）
+        function BeginEnd() {
+            const toggleButton = document.getElementById('beginend');
+            if(toggleButton.textContent == '暂停'){
+                toggleButton.textContent = '开始';
+                toggleButton.classList.add('start');
+                toggleButton.classList.remove('pause');
+                End();
+            }else{
+                toggleButton.textContent = '暂停';
+                toggleButton.classList.remove('start');
+                toggleButton.classList.add('pause');
+                Start();
+            }
+        }
+
+        function Start(){
+            intervalId = setInterval(() => {
+                FetchRank();
+            }, 500); // 500 毫秒
+        }
+
+        function End(){
+            if(intervalId){
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+        }
+
+        function DelAll(){
+            fetch('/del_all')
+                .then(response => response.json())
+                .then(datas => {
+                    players = []
+                    renderRanking();
+                })
+                .catch(error => {
+                    console.error('Error:', error); // 错误处理
+                });
+        }
+
+        function FetchRank(is_render = false){
+            fetch('/get_rank')
+                .then(response => response.json())
+                .then(datas => {
+                    players = [];
+                    for(let data of datas.rank){
+                        ranking.add(data.id, data.name, data.score, data.msg, data.is_new, false);
+                        if(data.is_new){
+                            is_render = true;
+                        }
+                    }
+                    is_render && renderRanking();
+
+                    del_a = document.getElementById('del_count');
+                    del_a.textContent = "(" + datas.del_count + ")";
+
+                    insert_a = document.getElementById('insert_count');
+                    insert_a.textContent = "(今日插队" + datas.insert_count + ")";
+                })
+                .catch(error => {
+                    console.error('Error:', error); // 错误处理
+                });
+        }
+
+        FetchRank(true);
+
+        function CopyMsg(msg){
+            if (navigator.clipboard && window.isSecureContext) {
+                // 使用 Clipboard API
+                navigator.clipboard.writeText(msg);
+                const url = `https://music.163.com/#/search/m/?s=${encodeURIComponent(msg)}&type=1`;
+                let newWindow = window.open(url, 'neteaseMusicWindow'); // 在新窗口打开
+                let content = newWindow.document.body.innerHTML;
+            }
+        }
+    
+    </script>
+</body>
+</html>
